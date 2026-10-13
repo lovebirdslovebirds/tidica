@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>심플 세계 시간 변환기 | Timezone Converter</title>
+    <!-- 검색엔진 최적화(SEO)를 위한 메타 태그 -->
+    <meta name="description" content="전 세계 도시의 시차를 내 위치 시간과 비교하여 빠르고 간편하게 확인하세요. 100% 무료 시간 변환기.">
+    <meta name="keywords" content="시간 변환, 시차 계산, 타임존, 세계 시간, GMT">
+    <meta name="robots" content="index, follow">
+
+    <!-- 스타일링을 위한 Tailwind CSS 로드 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 기본 폰트 설정 및 와이어프레임 감성(굵은 테두리)을 위한 커스텀 스타일 */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #ffffff;
+            color: #000000;
+        }
+        /* 커스텀 체크박스 스타일 */
+        input[type="checkbox"] {
+            width: 24px;
+            height: 24px;
+            border: 3px solid black;
+            appearance: none;
+            cursor: pointer;
+            outline: none;
+            position: relative;
+        }
+        input[type="checkbox"]:checked::after {
+            content: '✔';
+            position: absolute;
+            top: -2px;
+            left: 2px;
+            font-size: 18px;
+            font-weight: bold;
+            color: black;
+        }
+        /* 입력창 포커스 아웃라인 제거 */
+        input:focus {
+            outline: none;
+        }
+        /* 검색 결과 목록에서 키보드/마우스로 선택된 항목 */
+        .tz-item.active {
+            background-color: #000000;
+            color: #ffffff;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+
+    <div class="max-w-4xl w-full flex flex-col md:flex-row gap-6">
+
+        <!-- 왼쪽 패널: 내 위치 시간 -->
+        <div class="flex-1 min-w-0 flex flex-col">
+            <!-- 헤더 박스 -->
+            <div class="border-[4px] border-black p-3 mb-2 flex items-center justify-start">
+                <span id="t-my-time" class="font-bold text-lg">내 위치 시간</span>
+            </div>
+
+            <!-- 시간 표시 박스 -->
+            <div class="border-[4px] border-black aspect-square flex flex-col items-center justify-center p-6 text-center">
+                <!-- 현재 내 위치 표시 -->
+                <div id="local-place" class="w-full whitespace-nowrap overflow-hidden text-xl md:text-2xl font-bold mb-1">📍</div>
+                <div id="local-place-sub" class="w-full whitespace-nowrap overflow-hidden text-sm text-gray-600">&nbsp;</div>
+                <!-- 서머타임 적용 여부 -->
+                <div id="local-dst" class="w-full whitespace-nowrap overflow-hidden text-sm font-bold mb-6">&nbsp;</div>
+                <div id="local-date" class="text-3xl md:text-4xl font-semibold mb-6">로딩중...</div>
+                <div id="local-time" class="text-4xl md:text-5xl font-bold">--:--:--</div>
+                <button id="locate-btn" class="hidden mt-6 border-[3px] border-black px-3 py-1 font-bold text-sm">📍 정확한 위치 다시 확인</button>
+            </div>
+
+            <!-- 24시간 표시 체크박스 (왼쪽 박스 아래) -->
+            <div class="mt-4 flex items-center gap-3">
+                <input type="checkbox" id="format-toggle">
+                <label id="t-h24" for="format-toggle" class="font-bold text-lg cursor-pointer">24시간 표시</label>
+            </div>
+        </div>
+
+        <!-- 오른쪽 패널: 선택한 도시/국가 시간 -->
+        <div class="flex-1 min-w-0 flex flex-col">
+            <!-- 헤더 박스 (검색창) -->
+            <div class="relative border-[4px] border-black p-3 mb-2 flex items-center gap-2">
+                <span class="text-lg">🔍</span>
+                <input
+                    type="text"
+                    id="tz-input"
+                    autocomplete="off"
+                    class="w-full text-lg font-bold placeholder-gray-500 bg-transparent"
+                    placeholder="도시, 국가 이름 검색 (예: 파리, 미국, tokyo)"
+                >
+                <!-- 검색 결과 목록 -->
+                <div id="tz-list" class="hidden absolute z-10 top-full mt-1 bg-white border-[4px] border-black max-h-72 overflow-y-auto" style="left:-4px; right:-4px;"></div>
+            </div>
+
+            <!-- 시간 표시 박스 -->
+            <div class="border-[4px] border-black aspect-square flex flex-col items-center justify-center p-6 text-center">
+                <div id="target-place" class="w-full whitespace-nowrap overflow-hidden text-xl md:text-2xl font-bold mb-1">&nbsp;</div>
+                <div id="target-place-sub" class="w-full whitespace-nowrap overflow-hidden text-sm text-gray-600">&nbsp;</div>
+                <!-- 서머타임 적용 여부 -->
+                <div id="target-dst" class="w-full whitespace-nowrap overflow-hidden text-sm font-bold mb-6">&nbsp;</div>
+                <div id="target-date" class="text-3xl md:text-4xl font-semibold mb-6">로딩중...</div>
+                <div id="target-time" class="text-4xl md:text-5xl font-bold">--:--:--</div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // 주요 도시 목록: [국가, 도시, 타임존 ID, 영문 검색어]
+        const MAJOR_CITIES = [
+            ['대한민국', '서울', 'Asia/Seoul', 'korea seoul 한국'],
+            ['북한', '평양', 'Asia/Pyongyang', 'north korea pyongyang'],
+            ['일본', '도쿄', 'Asia/Tokyo', 'japan tokyo 동경'],
+            ['중국', '베이징', 'Asia/Shanghai', 'china beijing 북경'],
+            ['홍콩', '홍콩', 'Asia/Hong_Kong', 'hong kong'],
+            ['대만', '타이베이', 'Asia/Taipei', 'taiwan taipei 타이완'],
+            ['몽골', '울란바토르', 'Asia/Ulaanbaatar', 'mongolia ulaanbaatar'],
+            ['베트남', '호치민', 'Asia/Ho_Chi_Minh', 'vietnam ho chi minh saigon 사이공'],
+            ['태국', '방콕', 'Asia/Bangkok', 'thailand bangkok 타이'],
+            ['싱가포르', '싱가포르', 'Asia/Singapore', 'singapore'],
+            ['말레이시아', '쿠알라룸푸르', 'Asia/Kuala_Lumpur', 'malaysia kuala lumpur'],
+            ['인도네시아', '자카르타', 'Asia/Jakarta', 'indonesia jakarta'],
+            ['인도네시아', '발리', 'Asia/Makassar', 'indonesia bali denpasar'],
+            ['필리핀', '마닐라', 'Asia/Manila', 'philippines manila'],
+            ['인도', '뉴델리', 'Asia/Kolkata', 'india new delhi'],
+            ['파키스탄', '카라치', 'Asia/Karachi', 'pakistan karachi'],
+            ['방글라데시', '다카', 'Asia/Dhaka', 'bangladesh dhaka'],
+            ['네팔', '카트만두', 'Asia/Kathmandu', 'nepal kathmandu'],
+            ['우즈베키스탄', '타슈켄트', 'Asia/Tashkent', 'uzbekistan tashkent'],
+            ['카자흐스탄', '알마티', 'Asia/Almaty', 'kazakhstan almaty'],
+            ['아랍에미리트', '두바이', 'Asia/Dubai', 'uae dubai'],
+            ['사우디아라비아', '리야드', 'Asia/Riyadh', 'saudi arabia riyadh'],
+            ['카타르', '도하', 'Asia/Qatar', 'qatar doha'],
+            ['이란', '테헤란', 'Asia/Tehran', 'iran tehran'],
+            ['이스라엘', '예루살렘', 'Asia/Jerusalem', 'israel jerusalem'],
+            ['튀르키예', '이스탄불', 'Europe/Istanbul', 'turkey türkiye istanbul 터키'],
+            ['러시아', '모스크바', 'Europe/Moscow', 'russia moscow'],
+            ['러시아', '블라디보스토크', 'Asia/Vladivostok', 'russia vladivostok'],
+            ['우크라이나', '키이우', 'Europe/Kyiv', 'ukraine kyiv kiev 키예프'],
+            ['영국', '런던', 'Europe/London', 'uk united kingdom england london'],
+            ['아일랜드', '더블린', 'Europe/Dublin', 'ireland dublin'],
+            ['프랑스', '파리', 'Europe/Paris', 'france paris'],
+            ['독일', '베를린', 'Europe/Berlin', 'germany berlin'],
+            ['네덜란드', '암스테르담', 'Europe/Amsterdam', 'netherlands amsterdam'],
+            ['벨기에', '브뤼셀', 'Europe/Brussels', 'belgium brussels'],
+            ['스위스', '취리히', 'Europe/Zurich', 'switzerland zurich'],
+            ['오스트리아', '빈', 'Europe/Vienna', 'austria vienna 비엔나'],
+            ['이탈리아', '로마', 'Europe/Rome', 'italy rome'],
+            ['스페인', '마드리드', 'Europe/Madrid', 'spain madrid'],
+            ['포르투갈', '리스본', 'Europe/Lisbon', 'portugal lisbon'],
+            ['그리스', '아테네', 'Europe/Athens', 'greece athens'],
+            ['체코', '프라하', 'Europe/Prague', 'czech prague'],
+            ['폴란드', '바르샤바', 'Europe/Warsaw', 'poland warsaw'],
+            ['헝가리', '부다페스트', 'Europe/Budapest', 'hungary budapest'],
+            ['스웨덴', '스톡홀름', 'Europe/Stockholm', 'sweden stockholm'],
+            ['노르웨이', '오슬로', 'Europe/Oslo', 'norway oslo'],
+            ['덴마크', '코펜하겐', 'Europe/Copenhagen', 'denmark copenhagen'],
+            ['핀란드', '헬싱키', 'Europe/Helsinki', 'finland helsinki'],
+            ['아이슬란드', '레이캬비크', 'Atlantic/Reykjavik', 'iceland reykjavik'],
+            ['미국', '뉴욕', 'America/New_York', 'usa united states america new york'],
+            ['미국', '시카고', 'America/Chicago', 'usa united states america chicago'],
+            ['미국', '덴버', 'America/Denver', 'usa united states denver'],
+            ['미국', '피닉스', 'America/Phoenix', 'usa united states phoenix arizona'],
+            ['미국', '로스앤젤레스', 'America/Los_Angeles', 'usa united states america los angeles la 엘에이'],
+            ['미국', '앵커리지', 'America/Anchorage', 'usa united states alaska anchorage 알래스카'],
+            ['미국', '하와이 호놀룰루', 'Pacific/Honolulu', 'usa united states hawaii honolulu'],
+            ['괌', '괌', 'Pacific/Guam', 'guam'],
+            ['캐나다', '토론토', 'America/Toronto', 'canada toronto'],
+            ['캐나다', '밴쿠버', 'America/Vancouver', 'canada vancouver'],
+            ['멕시코', '멕시코시티', 'America/Mexico_City', 'mexico city'],
+            ['브라질', '상파울루', 'America/Sao_Paulo', 'brazil sao paulo'],
+            ['아르헨티나', '부에노스아이레스', 'America/Argentina/Buenos_Aires', 'argentina buenos aires'],
+            ['칠레', '산티아고', 'America/Santiago', 'chile santiago'],
+            ['페루', '리마', 'America/Lima', 'peru lima'],
+            ['콜롬비아', '보고타', 'America/Bogota', 'colombia bogota'],
+            ['호주', '시드니', 'Australia/Sydney', 'australia sydney 오스트레일리아'],
+            ['호주', '멜버른', 'Australia/Melbourne', 'australia melbourne'],
+            ['호주', '브리즈번', 'Australia/Brisbane', 'australia brisbane'],
+            ['호주', '퍼스', 'Australia/Perth', 'australia perth'],
+            ['뉴질랜드', '오클랜드', 'Pacific/Auckland', 'new zealand auckland'],
+            ['이집트', '카이로', 'Africa/Cairo', 'egypt cairo'],
+            ['남아프리카공화국', '요하네스버그', 'Africa/Johannesburg', 'south africa johannesburg 남아공'],
+            ['케냐', '나이로비', 'Africa/Nairobi', 'kenya nairobi'],
+            ['나이지리아', '라고스', 'Africa/Lagos', 'nigeria lagos'],
+            ['모로코', '카사블랑카', 'Africa/Casablanca', 'morocco casablanca']
+        ];
+
+        // 추가 도시 목록: [국가, 국가 검색어, 타임존 ID, '도시:영문 검색어, ...']
+        const MORE_CITIES = [
+            ['대한민국', '한국 korea', 'Asia/Seoul', '부산:busan, 인천:incheon, 대구:daegu, 대전:daejeon, 광주:gwangju, 울산:ulsan, 세종:sejong, 수원:suwon, 성남:seongnam, 고양:goyang 일산, 용인:yongin, 부천:bucheon, 안산:ansan, 안양:anyang, 남양주:namyangju, 화성:hwaseong 동탄, 평택:pyeongtaek, 의정부:uijeongbu, 파주:paju, 김포:gimpo, 시흥:siheung, 광명:gwangmyeong, 하남:hanam, 이천:icheon, 춘천:chuncheon, 원주:wonju, 강릉:gangneung, 속초:sokcho, 동해:donghae, 청주:cheongju, 충주:chungju, 제천:jecheon, 천안:cheonan, 아산:asan, 서산:seosan, 당진:dangjin, 공주:gongju, 논산:nonsan, 전주:jeonju, 군산:gunsan, 익산:iksan, 남원:namwon, 목포:mokpo, 여수:yeosu, 순천:suncheon, 광양:gwangyang, 나주:naju, 포항:pohang, 경주:gyeongju, 구미:gumi, 안동:andong, 김천:gimcheon, 경산:gyeongsan, 창원:changwon 마산, 김해:gimhae, 진주:jinju, 양산:yangsan, 거제:geoje, 통영:tongyeong, 제주:jeju, 서귀포:seogwipo'],
+            ['일본', 'japan', 'Asia/Tokyo', '오사카:osaka, 교토:kyoto, 요코하마:yokohama, 나고야:nagoya, 삿포로:sapporo|홋카이도 hokkaido, 후쿠오카:fukuoka, 고베:kobe, 히로시마:hiroshima, 센다이:sendai, 나라:nara, 가고시마:kagoshima, 나가사키:nagasaki, 구마모토:kumamoto, 오키나와:okinawa|naha 나하'],
+            ['중국', 'china', 'Asia/Shanghai', '상하이:shanghai 상해, 광저우:guangzhou, 선전:shenzhen 심천, 청두:chengdu, 충칭:chongqing, 항저우:hangzhou, 난징:nanjing, 시안:xian, 우한:wuhan, 톈진:tianjin 천진, 칭다오:qingdao 청도, 다롄:dalian 대련, 하얼빈:harbin, 선양:shenyang 심양, 쑤저우:suzhou, 샤먼:xiamen, 쿤밍:kunming, 옌지:yanji 연길'],
+            ['마카오', 'macau macao', 'Asia/Macau', '마카오:macau'],
+            ['대만', 'taiwan 타이완', 'Asia/Taipei', '가오슝:kaohsiung, 타이중:taichung, 타이난:tainan'],
+            ['베트남', 'vietnam', 'Asia/Ho_Chi_Minh', '하노이:hanoi, 다낭:da nang, 나트랑:nha trang 냐짱, 푸꾸옥:phu quoc, 하이퐁:hai phong, 달랏:da lat, 호이안:hoi an'],
+            ['태국', 'thailand 타이', 'Asia/Bangkok', '치앙마이:chiang mai, 푸껫:phuket 푸켓, 파타야:pattaya'],
+            ['필리핀', 'philippines', 'Asia/Manila', '세부:cebu, 보라카이:boracay, 다바오:davao, 클락:clark'],
+            ['인도네시아', 'indonesia', 'Asia/Jakarta', '수라바야:surabaya, 반둥:bandung'],
+            ['말레이시아', 'malaysia', 'Asia/Kuala_Lumpur', '페낭:penang, 조호르바루:johor bahru'],
+            ['말레이시아', 'malaysia', 'Asia/Kuching', '코타키나발루:kota kinabalu'],
+            ['캄보디아', 'cambodia', 'Asia/Phnom_Penh', '프놈펜:phnom penh, 시엠립:siem reap 씨엠립'],
+            ['라오스', 'laos', 'Asia/Vientiane', '비엔티안:vientiane, 루앙프라방:luang prabang'],
+            ['미얀마', 'myanmar', 'Asia/Yangon', '양곤:yangon'],
+            ['스리랑카', 'sri lanka', 'Asia/Colombo', '콜롬보:colombo'],
+            ['몰디브', 'maldives', 'Indian/Maldives', '말레:male'],
+            ['인도', 'india', 'Asia/Kolkata', '뭄바이:mumbai, 벵갈루루:bengaluru|bangalore 방갈로르, 첸나이:chennai, 하이데라바드:hyderabad, 콜카타:kolkata'],
+            ['아랍에미리트', 'uae', 'Asia/Dubai', '아부다비:abu dhabi'],
+            ['사우디아라비아', 'saudi arabia', 'Asia/Riyadh', '제다:jeddah, 메카:mecca'],
+            ['쿠웨이트', 'kuwait', 'Asia/Kuwait', '쿠웨이트시티:kuwait city'],
+            ['이스라엘', 'israel', 'Asia/Jerusalem', '텔아비브:tel aviv'],
+            ['튀르키예', 'turkey türkiye 터키', 'Europe/Istanbul', '앙카라:ankara, 안탈리아:antalya'],
+            ['러시아', 'russia', 'Europe/Moscow', '상트페테르부르크:saint petersburg|st'],
+            ['러시아', 'russia', 'Asia/Novosibirsk', '노보시비르스크:novosibirsk'],
+            ['러시아', 'russia', 'Asia/Irkutsk', '이르쿠츠크:irkutsk'],
+            ['러시아', 'russia', 'Asia/Vladivostok', '하바롭스크:khabarovsk'],
+            ['러시아', 'russia', 'Asia/Sakhalin', '사할린:sakhalin'],
+            ['영국', 'uk united kingdom england', 'Europe/London', '맨체스터:manchester, 리버풀:liverpool, 버밍엄:birmingham, 에든버러:edinburgh 에딘버러, 글래스고:glasgow, 옥스퍼드:oxford, 케임브리지:cambridge'],
+            ['프랑스', 'france', 'Europe/Paris', '니스:nice, 리옹:lyon, 마르세유:marseille, 보르도:bordeaux'],
+            ['독일', 'germany', 'Europe/Berlin', '뮌헨:munich, 프랑크푸르트:frankfurt, 함부르크:hamburg, 쾰른:cologne|koln, 뒤셀도르프:dusseldorf, 슈투트가르트:stuttgart'],
+            ['이탈리아', 'italy', 'Europe/Rome', '밀라노:milan, 베네치아:venice 베니스, 피렌체:florence, 나폴리:naples'],
+            ['스페인', 'spain', 'Europe/Madrid', '바르셀로나:barcelona, 세비야:seville, 발렌시아:valencia'],
+            ['스위스', 'switzerland', 'Europe/Zurich', '제네바:geneva, 베른:bern'],
+            ['오스트리아', 'austria', 'Europe/Vienna', '잘츠부르크:salzburg'],
+            ['포르투갈', 'portugal', 'Europe/Lisbon', '포르투:porto'],
+            ['크로아티아', 'croatia', 'Europe/Zagreb', '자그레브:zagreb, 두브로브니크:dubrovnik'],
+            ['루마니아', 'romania', 'Europe/Bucharest', '부쿠레슈티:bucharest'],
+            ['불가리아', 'bulgaria', 'Europe/Sofia', '소피아:sofia'],
+            ['세르비아', 'serbia', 'Europe/Belgrade', '베오그라드:belgrade'],
+            ['미국', 'usa united states america', 'America/New_York', '워싱턴 D.C.:washington D.C., 보스턴:boston, 필라델피아:philadelphia, 마이애미:miami, 애틀랜타:atlanta, 올랜도:orlando, 샬럿:charlotte, 피츠버그:pittsburgh'],
+            ['미국', 'usa united states america', 'America/Detroit', '디트로이트:detroit'],
+            ['미국', 'usa united states america', 'America/Chicago', '댈러스:dallas, 휴스턴:houston, 오스틴:austin, 샌안토니오:san antonio, 뉴올리언스:new orleans, 미니애폴리스:minneapolis, 내슈빌:nashville, 세인트루이스:st. louis|saint louis, 캔자스시티:kansas city'],
+            ['미국', 'usa united states america', 'America/Denver', '솔트레이크시티:salt lake city'],
+            ['미국', 'usa united states america', 'America/Los_Angeles', '샌프란시스코:san francisco, 시애틀:seattle, 라스베이거스:las vegas 라스베가스, 샌디에이고:san diego, 포틀랜드:portland, 새너제이:san jose 산호세 실리콘밸리, 새크라멘토:sacramento'],
+            ['사이판', 'saipan', 'Pacific/Saipan', '사이판:saipan'],
+            ['캐나다', 'canada', 'America/Toronto', '몬트리올:montreal, 오타와:ottawa, 퀘벡:quebec'],
+            ['캐나다', 'canada', 'America/Vancouver', '빅토리아:victoria'],
+            ['캐나다', 'canada', 'America/Edmonton', '캘거리:calgary, 에드먼턴:edmonton'],
+            ['캐나다', 'canada', 'America/Winnipeg', '위니펙:winnipeg'],
+            ['캐나다', 'canada', 'America/Halifax', '핼리팩스:halifax'],
+            ['멕시코', 'mexico', 'America/Cancun', '칸쿤:cancun'],
+            ['멕시코', 'mexico', 'America/Mexico_City', '과달라하라:guadalajara'],
+            ['쿠바', 'cuba', 'America/Havana', '아바나:havana 하바나'],
+            ['브라질', 'brazil', 'America/Sao_Paulo', '리우데자네이루:rio de janeiro, 브라질리아:brasilia'],
+            ['호주', 'australia 오스트레일리아', 'Australia/Sydney', '캔버라:canberra'],
+            ['호주', 'australia 오스트레일리아', 'Australia/Brisbane', '골드코스트:gold coast, 케언스:cairns'],
+            ['호주', 'australia 오스트레일리아', 'Australia/Adelaide', '애들레이드:adelaide'],
+            ['호주', 'australia 오스트레일리아', 'Australia/Darwin', '다윈:darwin'],
+            ['뉴질랜드', 'new zealand', 'Pacific/Auckland', '웰링턴:wellington, 크라이스트처치:christchurch, 퀸스타운:queenstown'],
+            ['피지', 'fiji', 'Pacific/Fiji', '피지:fiji'],
+            ['남아프리카공화국', 'south africa 남아공', 'Africa/Johannesburg', '케이프타운:cape town'],
+            ['에티오피아', 'ethiopia', 'Africa/Addis_Ababa', '아디스아바바:addis ababa'],
+            ['가나', 'ghana', 'Africa/Accra', '아크라:accra'],
+            ['탄자니아', 'tanzania', 'Africa/Dar_es_Salaam', '다르에스살람:dar es salaam'],
+            ['알제리', 'algeria', 'Africa/Algiers', '알제:algiers'],
+            ['튀니지', 'tunisia', 'Africa/Tunis', '튀니스:tunis']
+        ];
+
+        // 국가 이름 → 국가 코드 (한국어 외 언어에서 국가 이름을 자동 번역하는 데 사용)
+        const COUNTRY_CODES = {
+            '대한민국': 'KR', '북한': 'KP', '일본': 'JP', '중국': 'CN', '대만': 'TW', '몽골': 'MN', '베트남': 'VN', '태국': 'TH',
+            '말레이시아': 'MY', '인도네시아': 'ID', '필리핀': 'PH', '인도': 'IN', '파키스탄': 'PK', '방글라데시': 'BD', '네팔': 'NP',
+            '우즈베키스탄': 'UZ', '카자흐스탄': 'KZ', '아랍에미리트': 'AE', '사우디아라비아': 'SA', '카타르': 'QA', '이란': 'IR',
+            '이스라엘': 'IL', '튀르키예': 'TR', '러시아': 'RU', '우크라이나': 'UA', '영국': 'GB', '아일랜드': 'IE', '프랑스': 'FR',
+            '독일': 'DE', '네덜란드': 'NL', '벨기에': 'BE', '스위스': 'CH', '오스트리아': 'AT', '이탈리아': 'IT', '스페인': 'ES',
+            '포르투갈': 'PT', '그리스': 'GR', '체코': 'CZ', '폴란드': 'PL', '헝가리': 'HU', '스웨덴': 'SE', '노르웨이': 'NO',
+            '덴마크': 'DK', '핀란드': 'FI', '아이슬란드': 'IS', '미국': 'US', '캐나다': 'CA', '멕시코': 'MX', '브라질': 'BR',
+            '아르헨티나': 'AR', '칠레': 'CL', '페루': 'PE', '콜롬비아': 'CO', '호주': 'AU', '뉴질랜드': 'NZ', '이집트': 'EG',
+            '남아프리카공화국': 'ZA', '케냐': 'KE', '나이지리아': 'NG', '모로코': 'MA', '캄보디아': 'KH', '라오스': 'LA',
+            '미얀마': 'MM', '스리랑카': 'LK', '몰디브': 'MV', '쿠웨이트': 'KW', '크로아티아': 'HR', '루마니아': 'RO',
+            '불가리아': 'BG', '세르비아': 'RS', '쿠바': 'CU', '에티오피아': 'ET', '가나': 'GH', '탄자니아': 'TZ', '알제리': 'DZ', '튀니지': 'TN'
+        };
+
+        // 타임존 ID의 도시 이름과 실제 표시할 도시가 다른 경우의 영문 이름
+        const EN_CITY_OVERRIDES = {
+            'Asia/Shanghai': 'Beijing', 'Asia/Kolkata': 'New Delhi', 'Asia/Makassar': 'Bali', 'Asia/Qatar': 'Doha'
+        };
+
+        // ---------- 다국어 ----------
+
+        const I18N = {
+            ko: {
+                title: '심플 세계 시간 변환기 | Timezone Converter',
+                myTime: '내 위치 시간', locating: '위치 확인 중...', relocate: '📍 정확한 위치 다시 확인', h24: '24시간 표시',
+                placeholder: '도시, 국가 이름 검색 (예: 부산, 파리, 미국, tokyo)', noResult: '검색 결과가 없습니다',
+                byTz: '시간대 기준', noPerm: '위치 권한 없음, 시간대 기준',
+                dstOn: '☀️ 서머타임 적용 중', dstOff: '서머타임 미적용 중 (표준시)', dstNone: '서머타임 없는 지역'
+            },
+            en: {
+                title: 'Simple World Time Converter | Timezone Converter',
+                myTime: 'My Local Time', locating: 'Locating...', relocate: '📍 Retry precise location', h24: '24-hour clock',
+                placeholder: 'Search city or country (e.g. Paris, Japan)', noResult: 'No results found',
+                byTz: 'based on time zone', noPerm: 'no location permission, based on time zone',
+                dstOn: '☀️ Daylight saving time in effect', dstOff: 'Standard time (DST not in effect)', dstNone: 'No daylight saving time'
+            },
+            ja: {
+                title: 'シンプル世界時計 | Timezone Converter',
+                myTime: '現在地の時刻', locating: '位置を確認中...', relocate: '📍 正確な位置を再確認', h24: '24時間表示',
+                placeholder: '都市・国名で検索（例: Paris, Japan）', noResult: '検索結果がありません',
+                byTz: 'タイムゾーン基準', noPerm: '位置情報の許可なし、タイムゾーン基準',
+                dstOn: '☀️ サマータイム実施中', dstOff: '標準時（サマータイム期間外）', dstNone: 'サマータイムなし'
+            },
+            zh: {
+                title: '简易世界时间转换器 | Timezone Converter',
+                myTime: '我的当地时间', locating: '正在定位...', relocate: '📍 重新获取精确位置', h24: '24小时制',
+                placeholder: '搜索城市或国家（如 Paris, Japan）', noResult: '没有搜索结果',
+                byTz: '基于时区', noPerm: '无定位权限，基于时区',
+                dstOn: '☀️ 夏令时实行中', dstOff: '标准时间（非夏令时）', dstNone: '无夏令时'
+            },
+            es: {
+                title: 'Conversor de hora mundial | Timezone Converter',
+                myTime: 'Mi hora local', locating: 'Localizando...', relocate: '📍 Reintentar ubicación precisa', h24: 'Formato 24 horas',
+                placeholder: 'Buscar ciudad o país (ej. Paris, Japan)', noResult: 'Sin resultados',
+                byTz: 'según zona horaria', noPerm: 'sin permiso de ubicación, según zona horaria',
+                dstOn: '☀️ Horario de verano en vigor', dstOff: 'Horario estándar (sin horario de verano)', dstNone: 'Sin horario de verano'
+            }
+        };
+
+        // 브라우저(기기)에 설정된 언어 중 지원하는 첫 번째 언어 사용, 없으면 영어. 주소 뒤에 ?lang=en 처럼 붙여 강제 지정 가능
+        const LANG = [new URLSearchParams(location.search).get('lang'), ...(navigator.languages || [navigator.language])]
+            .filter(Boolean)
+            .map(l => l.toLowerCase().split('-')[0])
+            .find(l => I18N[l]) || 'en';
+        const T = I18N[LANG];
+        const IS_KO = LANG === 'ko';
+
+        // ---------- 검색 대상 목록 ----------
+
+        // 검색용 문자열 정리 (소문자, 공백/밑줄/슬래시/마침표 제거)
+        const normalize = (s) => s.toLowerCase().replace(/[\s_\/.]/g, '');
+        const titleCase = (s) => s.replace(/(^|\s)([a-z])/g, (m, space, ch) => space + ch.toUpperCase());
+
+        let regionNames = null;
+        try { if (!IS_KO) regionNames = new Intl.DisplayNames([LANG], { type: 'region' }); } catch (error) {}
+
+        // 한국어: "대한민국 부산" / 그 외 언어: "Busan, South Korea"
+        function makeLabel(country, city, enCity) {
+            if (IS_KO) return country === city ? city : `${country} ${city}`;
+            const code = COUNTRY_CODES[country];
+            const countryName = code && regionNames ? regionNames.of(code) : '';
+            return countryName ? `${enCity}, ${countryName}` : enCity;
+        }
+
+        // 전체 검색 대상 목록 만들기: 주요 도시 + 추가 도시 + 브라우저가 지원하는 나머지 전 세계 타임존
+        const ZONES = MAJOR_CITIES.map(([country, city, tz, extra]) => ({
+            tz,
+            label: makeLabel(country, city, EN_CITY_OVERRIDES[tz] || tz.split('/').pop().replace(/_/g, ' ')),
+            search: normalize(`${country}${city}${tz}${extra}`)
+        }));
+        MORE_CITIES.forEach(([country, countryExtra, tz, cities]) => {
+            cities.split(',').forEach(entry => {
+                // '도시:영문 이름|추가 검색어' 형식
+                const [city, rest = ''] = entry.trim().split(':');
+                const enCity = titleCase(rest.split('|')[0].split(' ').filter(w => /^[\x00-\x7F]+$/.test(w)).join(' '));
+                ZONES.push({
+                    tz,
+                    label: makeLabel(country, city, enCity),
+                    search: normalize(`${country}${city}${countryExtra}${rest}`)
+                });
+            });
+        });
+        if (Intl.supportedValuesOf) {
+            const known = new Set(ZONES.map(z => z.tz));
+            // 주요 도시와 같은 곳을 가리키는 옛 이름은 중복되므로 제외
+            ['Asia/Calcutta', 'Asia/Saigon', 'Asia/Katmandu', 'Asia/Rangoon', 'Europe/Kiev', 'America/Buenos_Aires'].forEach(tz => known.add(tz));
+            Intl.supportedValuesOf('timeZone').forEach(tz => {
+                if (known.has(tz)) return;
+                ZONES.push({
+                    tz,
+                    label: tz.split('/').slice(1).join(' / ').replace(/_/g, ' ') || tz,
+                    search: normalize(tz)
+                });
+            });
+        }
+        const findZone = (tz) => ZONES.find(z => z.tz === tz);
+
+        // DOM 요소 가져오기
+        const localPlaceEl = document.getElementById('local-place');
+        const localPlaceSubEl = document.getElementById('local-place-sub');
+        const localDstEl = document.getElementById('local-dst');
+        const localDateEl = document.getElementById('local-date');
+        const localTimeEl = document.getElementById('local-time');
+        const locateBtn = document.getElementById('locate-btn');
+        const targetPlaceEl = document.getElementById('target-place');
+        const targetPlaceSubEl = document.getElementById('target-place-sub');
+        const targetDstEl = document.getElementById('target-dst');
+        const targetDateEl = document.getElementById('target-date');
+        const targetTimeEl = document.getElementById('target-time');
+        const tzInput = document.getElementById('tz-input');
+        const tzList = document.getElementById('tz-list');
+        const formatToggle = document.getElementById('format-toggle');
+
+        // 화면 글자를 선택된 언어로 교체
+        document.documentElement.lang = LANG;
+        document.title = T.title;
+        document.getElementById('t-my-time').textContent = T.myTime;
+        document.getElementById('t-h24').textContent = T.h24;
+        locateBtn.textContent = T.relocate;
+        tzInput.placeholder = T.placeholder;
+
+        // 상태 변수
+        const localTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        let is24HourFormat = false;
+        let selectedZone = findZone('America/New_York'); // 기본값
+        let localNote = ''; // 정확한 위치를 못 구했을 때의 안내 문구
+        let results = [];
+        let activeIndex = 0;
+
+        // 글자가 한 줄에 다 들어가도록 폰트 크기를 자동으로 줄이기
+        const ONE_LINE_ELS = [localPlaceEl, localPlaceSubEl, localDstEl, targetPlaceEl, targetPlaceSubEl, targetDstEl];
+        function fitOneLine(el) {
+            el.style.fontSize = '';
+            let size = parseFloat(getComputedStyle(el).fontSize);
+            while (el.scrollWidth > el.clientWidth && size > 9) {
+                size -= 1;
+                el.style.fontSize = size + 'px';
+            }
+        }
+        const fitAll = () => ONE_LINE_ELS.forEach(fitOneLine);
+        window.addEventListener('resize', fitAll);
+        if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitAll);
+
+        // 타임존의 UTC 기준 차이 (예: GMT+9)
+        function getOffsetLabel(timezone) {
+            try {
+                const parts = new Intl.DateTimeFormat('en-US', { timeZone: timezone, timeZoneName: 'shortOffset' }).formatToParts(new Date());
+                return parts.find(p => p.type === 'timeZoneName').value;
+            } catch (error) {
+                return '';
+            }
+        }
+
+        // 특정 시점에 타임존이 UTC보다 몇 분 빠른지 계산
+        function getOffsetMinutes(timezone, date) {
+            const parts = new Intl.DateTimeFormat('en-US', {
+                timeZone: timezone, hourCycle: 'h23',
+                year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric'
+            }).formatToParts(date);
+            const v = {};
+            parts.forEach(p => { v[p.type] = Number(p.value); });
+            return Math.round((Date.UTC(v.year, v.month - 1, v.day, v.hour, v.minute, v.second) - date.getTime()) / 60000);
+        }
+
+        // 서머타임 상태 문구: 1월과 7월의 시차가 같으면 서머타임이 없는 지역, 다르면 시계가 더 빠른 쪽이 서머타임 기간
+        function getDstText(timezone) {
+            try {
+                const now = new Date();
+                const year = now.getUTCFullYear();
+                const january = getOffsetMinutes(timezone, new Date(Date.UTC(year, 0, 1)));
+                const july = getOffsetMinutes(timezone, new Date(Date.UTC(year, 6, 1)));
+                if (january === july) return T.dstNone;
+                return getOffsetMinutes(timezone, now) === Math.max(january, july) ? T.dstOn : T.dstOff;
+            } catch (error) {
+                return '';
+            }
+        }
+
+        // 시간대, UTC 차이, 서머타임 여부 표시 (서머타임 시작/종료 시점에 바뀌므로 주기적으로 갱신)
+        function updateZoneInfo() {
+            localPlaceSubEl.textContent = `${localTimezone} · ${getOffsetLabel(localTimezone)}${localNote ? ' · ' + localNote : ''}`;
+            localDstEl.textContent = getDstText(localTimezone);
+            targetPlaceSubEl.textContent = `${selectedZone.tz} · ${getOffsetLabel(selectedZone.tz)}`;
+            targetDstEl.textContent = getDstText(selectedZone.tz);
+            fitAll();
+        }
+
+        // ---------- 대상 도시 검색 ----------
+
+        function selectZone(zone) {
+            selectedZone = zone;
+            tzInput.value = zone.label;
+            targetPlaceEl.textContent = zone.label;
+            closeList();
+            updateZoneInfo();
+            updateTime(); // 즉시 업데이트
+        }
+
+        function renderList() {
+            const query = normalize(tzInput.value);
+            const matched = query ? ZONES.filter(z => z.search.includes(query) || normalize(z.label).includes(query)) : ZONES;
+            results = matched.slice(0, 100);
+            activeIndex = 0;
+            tzList.innerHTML = '';
+
+            if (results.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'p-3 font-bold text-gray-500';
+                empty.textContent = T.noResult;
+                tzList.appendChild(empty);
+            }
+
+            results.forEach((zone, index) => {
+                const item = document.createElement('div');
+                item.className = 'tz-item p-3 cursor-pointer flex justify-between items-center gap-3' + (index === 0 ? ' active' : '');
+                const name = document.createElement('span');
+                name.className = 'font-bold';
+                name.textContent = zone.label;
+                const sub = document.createElement('span');
+                sub.className = 'text-sm whitespace-nowrap';
+                sub.textContent = getOffsetLabel(zone.tz);
+                item.append(name, sub);
+                // 입력창의 blur보다 먼저 처리되도록 mousedown 사용
+                item.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    selectZone(zone);
+                    tzInput.blur();
+                });
+                item.addEventListener('mousemove', () => setActive(index));
+                tzList.appendChild(item);
+            });
+            tzList.classList.remove('hidden');
+        }
+
+        function setActive(index) {
+            const items = tzList.querySelectorAll('.tz-item');
+            if (!items.length) return;
+            items[activeIndex]?.classList.remove('active');
+            activeIndex = (index + items.length) % items.length;
+            items[activeIndex].classList.add('active');
+            items[activeIndex].scrollIntoView({ block: 'nearest' });
+        }
+
+        function closeList() {
+            tzList.classList.add('hidden');
+        }
+
+        tzInput.addEventListener('focus', () => {
+            tzInput.value = ''; // 새로 검색할 수 있도록 비우고 전체 목록 표시
+            renderList();
+        });
+        tzInput.addEventListener('input', renderList);
+        tzInput.addEventListener('blur', () => {
+            tzInput.value = selectedZone.label; // 선택하지 않고 나가면 원래 도시로 복원
+            closeList();
+        });
+        tzInput.addEventListener('keydown', (e) => {
+            if (e.isComposing) return; // 한글 조합 중 Enter 무시
+            if (e.key === 'ArrowDown') { e.preventDefault(); setActive(activeIndex + 1); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(activeIndex - 1); }
+            else if (e.key === 'Enter') {
+                if (results[activeIndex]) { selectZone(results[activeIndex]); tzInput.blur(); }
+            }
+            else if (e.key === 'Escape') { tzInput.blur(); }
+        });
+
+        // ---------- 내 위치 표시 ----------
+
+        function showLocalPlace(text, note) {
+            localPlaceEl.textContent = `📍 ${text}`;
+            localNote = note || '';
+            updateZoneInfo();
+        }
+
+        // 위치 권한이 없을 때: 기기 시간대 기준으로 대략적인 위치 표시
+        function showTimezonePlace(note) {
+            const zone = findZone(localTimezone);
+            showLocalPlace(zone ? zone.label : localTimezone, note);
+        }
+
+        // GPS/와이파이 기반 실제 위치를 주소로 변환해 표시
+        function locateMe() {
+            if (!navigator.geolocation) {
+                showTimezonePlace(T.byTz);
+                return;
+            }
+            locateBtn.classList.add('hidden');
+            navigator.geolocation.getCurrentPosition(async (pos) => {
+                try {
+                    const { latitude, longitude } = pos.coords;
+                    const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=${LANG}`);
+                    const data = await res.json();
+                    // 국가 > 시/도 > 시 > 구/동 순으로, 중복 없이 이어 붙이기
+                    const names = [];
+                    [data.countryName, data.principalSubdivision, data.city, data.locality].forEach(name => {
+                        if (name && !names.includes(name)) names.push(name);
+                    });
+                    if (!names.length) throw new Error('no address');
+                    // 한국어/일본어/중국어는 큰 단위부터, 그 외 언어는 작은 단위부터 쓰는 것이 자연스러움
+                    const bigFirst = ['ko', 'ja', 'zh'].includes(LANG);
+                    showLocalPlace(bigFirst ? names.join(' ') : names.reverse().join(', '));
+                } catch (error) {
+                    showTimezonePlace(T.byTz);
+                    locateBtn.classList.remove('hidden');
+                }
+            }, () => {
+                showTimezonePlace(T.noPerm);
+                locateBtn.classList.remove('hidden');
+            }, { timeout: 10000, maximumAge: 600000 });
+        }
+
+        locateBtn.addEventListener('click', locateMe);
+
+        // 체크박스 이벤트 처리
+        formatToggle.addEventListener('change', (e) => {
+            is24HourFormat = e.target.checked;
+            updateTime(); // 즉시 업데이트
+        });
+
+        // 날짜와 시간을 포맷팅하는 함수
+        function formatDateTime(date, timezone) {
+            try {
+                // Intl.DateTimeFormat을 사용하여 타임존에 맞는 시간 추출
+                const options = {
+                    timeZone: timezone,
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    // h23: 자정이 24:00이 아닌 00:00으로 표시되도록
+                    hourCycle: is24HourFormat ? 'h23' : 'h12'
+                };
+
+                const parts = new Intl.DateTimeFormat('en-US', options).formatToParts(date);
+
+                let year, month, day, hour, minute, second, dayPeriod;
+
+                parts.forEach(part => {
+                    if (part.type === 'year') year = part.value;
+                    if (part.type === 'month') month = part.value;
+                    if (part.type === 'day') day = part.value;
+                    if (part.type === 'hour') hour = part.value;
+                    if (part.type === 'minute') minute = part.value;
+                    if (part.type === 'second') second = part.value;
+                    if (part.type === 'dayPeriod') dayPeriod = part.value;
+                });
+
+                const dateString = `${year}-${month}-${day}`;
+                let timeString = `${hour}:${minute}:${second}`;
+
+                // 12시간제일 경우 AM/PM 추가
+                if (!is24HourFormat && dayPeriod) {
+                    timeString = `${timeString} ${dayPeriod}`;
+                }
+
+                return { dateString, timeString };
+            } catch (error) {
+                // 유효하지 않은 타임존일 때의 예외 처리
+                return { dateString: '----------', timeString: '--:--:--' };
+            }
+        }
+
+        // 화면 업데이트 함수
+        function updateTime() {
+            const now = new Date();
+
+            // 1. 내 위치 시간 계산 (브라우저 기본 타임존)
+            const localData = formatDateTime(now, localTimezone);
+            localDateEl.textContent = localData.dateString;
+            localTimeEl.textContent = localData.timeString;
+
+            // 2. 선택한 국가 시간 계산
+            const targetData = formatDateTime(now, selectedZone.tz);
+            targetDateEl.textContent = targetData.dateString;
+            targetTimeEl.textContent = targetData.timeString;
+        }
+
+        // 초기 실행 및 1초마다 업데이트
+        selectZone(selectedZone);
+        showLocalPlace(T.locating);
+        showTimezonePlace(); // 우선 시간대 기준으로 표시하고
+        locateMe();          // 권한이 허용되면 정확한 위치로 교체
+        setInterval(updateTime, 1000);
+        setInterval(updateZoneInfo, 60000);
+    </script>
+</body>
+</html>
